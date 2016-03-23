@@ -253,6 +253,7 @@ static char *print_string_ptr(const char *str)
     const char *ptr;
     char *ptr2, *out;
     int len = 0;
+    char token;
 
     if (!str) {
         return cJSON_strdup("");
@@ -260,7 +261,7 @@ static char *print_string_ptr(const char *str)
     ptr = str;
     while (*ptr && ++len) {
         if ((unsigned char)*ptr < 32 || *ptr == '\"' || *ptr == '\\') {
-            len++;
+            len+=5;
         }
         ptr++;
     }
@@ -274,7 +275,7 @@ static char *print_string_ptr(const char *str)
             *ptr2++ = *ptr++;
         } else {
             *ptr2++ = '\\';
-            switch (*ptr++) {
+            switch (token=*ptr++) {
             case '\\':
                 *ptr2++ = '\\';
                 break;
@@ -297,8 +298,8 @@ static char *print_string_ptr(const char *str)
                 *ptr2++ = 't';
                 break;
             default:
-                ptr2--;
-                break; /* eviscerate with prejudice. */
+                sprintf(ptr2,"u%04x",token);ptr2+=5;
+                break; /* escape and print */
             }
         }
     }
