@@ -17,27 +17,22 @@
 #pragma once
 
 #include <platform/cbassert.h>
+#include <platform/dynamic.h>
 
 #ifdef WIN32
 /* Include winsock2.h before windows.h to avoid winsock.h to be included */
+#define NOMINMAX
 #include <winsock2.h>
 #include <windows.h>
 #else
 #include <pthread.h>
-#include <stdint.h>
-#ifdef __sun
-#define CB_DONT_NEED_BYTEORDER 1
-#define CB_DONT_NEED_GETHRTIME 1
-#include <sys/time.h> /* for hrtime_t */
-#endif
-#endif
-
-#include <stdio.h>
-#include <platform/visibility.h>
-
-#ifdef __APPLE__
 #include <sys/time.h>
 #endif
+
+#include <time.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <platform/visibility.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,37 +41,16 @@ extern "C" {
 #ifdef WIN32
     typedef DWORD cb_thread_t;
     typedef CRITICAL_SECTION cb_mutex_t;
-
-#ifdef _MSC_VER
     typedef CONDITION_VARIABLE cb_cond_t;
     typedef long ssize_t;
-#else
-    /* @TODO make sure that this buffer is big enough!!! */
-    typedef struct {
-        __int64 blob[64];
-    } cb_cond_t;
-#endif
     typedef unsigned __int64 hrtime_t;
-
-    /* Unfortunately we don't have stdint.h on windows.. Let's just
-     * typedef them here for now.. we need to find a better solution for
-     * this!
-     */
-#if defined(_MSC_VER) && _MSC_VER < 1800
-    typedef __int8 int8_t;
-    typedef __int16 int16_t;
-    typedef __int32 int32_t;
-    typedef __int64 int64_t;
-    typedef unsigned __int8 uint8_t;
-    typedef unsigned __int16 uint16_t;
-    typedef unsigned __int32 uint32_t;
-    typedef unsigned __int64 uint64_t;
-#else
 #define CB_DONT_NEED_BYTEORDER 1
-#include <stdint.h>
-#endif
+#define DIRECTORY_SEPARATOR_CHARACTER '\\'
 
 #else
+
+#define DIRECTORY_SEPARATOR_CHARACTER '/'
+
     typedef pthread_t cb_thread_t;
     typedef pthread_mutex_t cb_mutex_t;
     typedef pthread_cond_t cb_cond_t;
@@ -113,6 +87,22 @@ extern "C" {
                          int detached);
 
     /**
+     * Create a new thread (in a running state), with a name.
+     *
+     * @param id The thread identifier (returned)
+     * @param func The entry point for the newly created thread
+     * @param arg Arguments passed to the newly created thread
+     * @param detached Set to non-null if the thread should be
+     *                 created in a detached state (which you
+     *                 can't call cb_join_thread on).
+     * @param name Name of the thread. Maximum of 16 characters in length,
+     *             including terminating '\0'. (Note: name ignored on Windows).
+     */
+    PLATFORM_PUBLIC_API
+    int cb_create_named_thread(cb_thread_t *id, cb_thread_main_func func,
+                               void *arg, int detached, const char* name);
+
+    /**
      * Wait for a thread to complete
      *
      * @param id The thread identifier to wait for
@@ -137,6 +127,15 @@ extern "C" {
      */
     PLATFORM_PUBLIC_API
     int cb_thread_equal(const cb_thread_t a, const cb_thread_t b);
+
+    /**
+     * Sets the current threads' name.
+     *
+     * @param name New value for the current threads' name. If non-NULL,
+     *             maximum of 16 characters in length.
+     */
+    PLATFORM_PUBLIC_API
+    void cb_set_thread_name(const char* name);
 
     /***********************************************************************
      *                      Mutex related functions                        *
@@ -261,6 +260,14 @@ extern "C" {
     hrtime_t gethrtime(void);
 #endif
 
+    /**
+     * Get the period of the high resolution time clock.
+     *
+     * @return Period of the clock in nanoseconds.
+     */
+    PLATFORM_PUBLIC_API
+    hrtime_t gethrtime_period(void);
+
 #ifndef CB_DONT_NEED_BYTEORDER
     PLATFORM_PUBLIC_API
     uint64_t ntohll(uint64_t);
@@ -337,6 +344,41 @@ extern "C" {
     */
     PLATFORM_PUBLIC_API
     void cb_set_timeofday_offset(uint64_t offset);
+
+    /**
+     * Some of our platforms complain on not using mkstemp. Instead of
+     * having the test in all programs we're just going to use this
+     * method instead.
+     *
+     * @param pattern The input pattern for the filename. It should end
+     *                with six X's that will be replaced with the unique
+     *                filename. The file will be created.
+     * @return pattern on success, NULL upon failure. Check errno for
+     *                 the reason.
+     */
+    PLATFORM_PUBLIC_API
+    char *cb_mktemp(char *pattern);
+
+    /**
+     * Convert time_t to a structure
+     *
+     * @param clock the input value
+     * @param result the output value
+     * @return 0 for success, -1 on failure
+     */
+    PLATFORM_PUBLIC_API
+    int cb_gmtime_r(const time_t *clock, struct tm *result);
+
+
+    /**
+     * Convert a time value with adjustments for the local time zone
+     *
+     * @param clock the input value
+     * @param result the output value
+     * @return 0 for success, -1 on failure
+     */
+    PLATFORM_PUBLIC_API
+    int cb_localtime_r(const time_t *clock, struct tm *result);
 
 #ifdef __cplusplus
 }

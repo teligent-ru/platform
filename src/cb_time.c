@@ -23,12 +23,9 @@
 
 #if defined(WIN32)
 #include <Windows.h>
-#include <platform/platform.h> /* use our win32 gettimeofday */
 #endif
 
-#if defined(__linux__) || defined(__sun)
-#include <time.h>
-#endif
+#include <platform/platform.h>
 
 static uint64_t timeofday_offset = 0;
 
@@ -68,7 +65,13 @@ uint64_t cb_get_monotonic_seconds() {
 */
 int cb_get_timeofday(struct timeval *tv) {
     int rv = gettimeofday(tv, NULL);
+#if defined(WIN32)
+    // WIN32: tv_sec is less precise than normal (it's a long); so explicitly
+    // downcast to silence implicit downcast warning.
+    tv->tv_sec += (long)timeofday_offset;
+#else
     tv->tv_sec += timeofday_offset;
+#endif
     return rv;
 }
 
@@ -78,4 +81,23 @@ int cb_get_timeofday(struct timeval *tv) {
 */
 void cb_set_timeofday_offset(uint64_t offset) {
     timeofday_offset = offset;
+}
+
+
+int cb_gmtime_r(const time_t *clock, struct tm *result)
+{
+#ifdef WIN32
+    return gmtime_s(result, clock) == 0 ? 0 : -1;
+#else
+    return gmtime_r(clock, result) == NULL ? -1 : 0;
+#endif
+}
+
+int cb_localtime_r(const time_t *clock, struct tm *result)
+{
+#ifdef WIN32
+    return localtime_s(result, clock) == 0 ? 0 : -1;
+#else
+    return localtime_r(clock, result) == NULL ? -1 : 0;
+#endif
 }

@@ -20,6 +20,7 @@
 #ifdef _MSC_VER
 #include <direct.h>
 #define rmdir _rmdir
+#define mkdir(a, b) _mkdir(a)
 #else
 #include <dirent.h>
 #include <unistd.h>
@@ -229,5 +230,49 @@ namespace CouchbaseDirectoryUtilities
         } while (!directories.empty());
 
         return rmdir(path.c_str()) == 0;
+    }
+
+    PLATFORM_PUBLIC_API
+    bool isDirectory(const std::string &directory) {
+#ifdef WIN32
+        DWORD dwAttrib = GetFileAttributes(directory.c_str());
+        if (dwAttrib == INVALID_FILE_ATTRIBUTES) {
+            return false;
+        }
+        return (dwAttrib & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY;
+#else
+        struct stat st;
+        if (stat(directory.c_str(), &st) == -1) {
+            return false;
+        }
+        return (S_ISDIR(st.st_mode));
+#endif
+    }
+
+    PLATFORM_PUBLIC_API
+    bool mkdirp(const std::string &directory) {
+        struct stat st;
+        if (stat(directory.c_str(), &st) == 0) {
+            if ((st.st_mode & S_IFDIR) == S_IFDIR) {
+                // It exists and is a directory!
+                return true;
+            }
+
+            // It exists but is a file!
+            return false;
+        }
+
+        std::string parent = dirname(directory);
+
+        if (!mkdirp(parent)) {
+            // failed to create parent directory
+            return false;
+        }
+
+        if (mkdir(directory.c_str(), S_IREAD | S_IWRITE | S_IEXEC) != 0) {
+            return false;
+        }
+
+        return true;
     }
 }
