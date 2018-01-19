@@ -20,31 +20,32 @@
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
   THE SOFTWARE.
 */
+/*
+ *     Copyright 2016 Couchbase, Inc
+ *
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *   you may not use this file except in compliance with the License.
+ *   You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *   Unless required by applicable law or agreed to in writing, software
+ *   distributed under the License is distributed on an "AS IS" BASIS,
+ *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *   See the License for the specific language governing permissions and
+ *   limitations under the License.
+ */
 
-#ifndef cJSON__h
-#define cJSON__h
+#pragma once
+
+#include <platform/visibility.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 #ifdef BUILDING_CJSON
-
-#if defined (__SUNPRO_C) && (__SUNPRO_C >= 0x550)
-#define CJSON_PUBLIC_API __global
-#elif defined __GNUC__
-#define CJSON_PUBLIC_API __attribute__ ((visibility("default")))
-#elif defined(_MSC_VER)
-#define CJSON_PUBLIC_API __declspec(dllexport)
+#define CJSON_PUBLIC_API EXPORT_SYMBOL
 #else
-/* unknown compiler */
-#define CJSON_PUBLIC_API
-#endif
-
-#else
-
-#if defined(_MSC_VER)
-#define CJSON_PUBLIC_API __declspec(dllimport)
-#else
-#define CJSON_PUBLIC_API
-#endif
-
+#define CJSON_PUBLIC_API IMPORT_SYMBOL
 #endif
 
 #ifdef __cplusplus
@@ -84,18 +85,6 @@ typedef struct cJSON {
                          object. */
 } cJSON;
 
-typedef struct cJSON_Hooks {
-    void *(*malloc_fn)(size_t sz);
-    void (*free_fn)(void *ptr);
-    void *(*calloc_fn)(size_t nmemb, size_t size);
-    char *(*strdup_fn)(const char *str);
-} cJSON_Hooks;
-
-/* Supply malloc, realloc and free functions to cJSON */
-CJSON_PUBLIC_API
-extern void cJSON_InitHooks(cJSON_Hooks* hooks);
-
-
 /* Supply a block of JSON, and this returns a cJSON object you can
    interrogate. Call cJSON_Delete when finished. */
 CJSON_PUBLIC_API
@@ -103,11 +92,11 @@ extern cJSON *cJSON_Parse(const char *value);
 /* Render a cJSON entity to text for transfer/storage. Free the char*
    when finished. */
 CJSON_PUBLIC_API
-extern char  *cJSON_Print(cJSON *item);
+extern char  *cJSON_Print(const cJSON *item);
 /* Render a cJSON entity to text for transfer/storage without any
    formatting. Free the char* when finished. */
 CJSON_PUBLIC_API
-extern char  *cJSON_PrintUnformatted(cJSON *item);
+extern char  *cJSON_PrintUnformatted(const cJSON *item);
 /* Release the memory returned by cJSON_Print and cJSON_PrintUnformatted */
 CJSON_PUBLIC_API
 extern void   cJSON_Free(char *ptr);
@@ -141,16 +130,6 @@ CJSON_PUBLIC_API
 extern cJSON *cJSON_CreateArray(void);
 CJSON_PUBLIC_API
 extern cJSON *cJSON_CreateObject(void);
-
-/* These utilities create an Array of count items. */
-CJSON_PUBLIC_API
-extern cJSON *cJSON_CreateIntArray(int *numbers,int count);
-CJSON_PUBLIC_API
-extern cJSON *cJSON_CreateFloatArray(float *numbers,int count);
-CJSON_PUBLIC_API
-extern cJSON *cJSON_CreateDoubleArray(double *numbers,int count);
-CJSON_PUBLIC_API
-extern cJSON *cJSON_CreateStringArray(const char **strings,int count);
 
 /* Append item to the specified array/object. */
 CJSON_PUBLIC_API
@@ -192,8 +171,14 @@ extern void cJSON_ReplaceItemInObject(cJSON *object,const char *string,cJSON *ne
 #define cJSON_AddStringToObject(object,name,s) \
         cJSON_AddItemToObject(object, name, cJSON_CreateString(s))
 
+CJSON_PUBLIC_API
+extern void cJSON_AddBoolToObject(cJSON* object, const char* string, bool value);
+
+CJSON_PUBLIC_API
+extern void cJSON_AddUintPtrToObject(cJSON* object,
+                                     const char* string,
+                                     uintptr_t value);
+
 #ifdef __cplusplus
 }
-#endif
-
 #endif

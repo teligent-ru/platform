@@ -17,14 +17,11 @@
 
 #include "config.h"
 
-#include "platform/internal_config.h"
-
 #include <platform/backtrace.h>
 #include <strings.h>
 
-#if defined(WIN32)
-#  define HAVE_BACKTRACE_SUPPORT 1
-#  include <Dbghelp.h>
+#if defined(WIN32) && defined(HAVE_BACKTRACE_SUPPORT)
+#include <Dbghelp.h>
 #endif
 
 #if defined(HAVE_BACKTRACE) && defined(HAVE_DLADDR)
@@ -69,33 +66,50 @@ static void describe_address(char* msg, size_t len, void* addr) {
     Dl_info info;
     int status = dladdr(addr, &info);
 
-    if (status != 0 &&
-        info.dli_fname != NULL &&
-        info.dli_fname[0] != '\0') {
-
-        if (info.dli_saddr == 0) {
-            // No offset calculation possible.
-            snprintf(msg, len, "%s(%s) [%p]",
-                    info.dli_fname,
-                    info.dli_sname ? info.dli_sname : "",
-                    addr);
-        } else {
-            char sign;
-            ptrdiff_t offset;
-            if (addr >= info.dli_saddr) {
-                sign = '+';
-                offset = (char*)addr - (char*)info.dli_saddr;
+    if (status != 0) {
+        ptrdiff_t image_offset = (char*)addr - (char*)info.dli_fbase;
+        if (info.dli_fname != NULL && info.dli_fname[0] != '\0') {
+            // Found a nearest symbol - print it.
+            if (info.dli_saddr == 0) {
+                // No function offset calculation possible.
+                snprintf(msg,
+                         len,
+                         "%s(%s) [%p+0x%" PRIx64 "]",
+                         info.dli_fname,
+                         info.dli_sname ? info.dli_sname : "",
+                         info.dli_fbase,
+                         (uint64_t)image_offset);
             } else {
-                sign = '-';
-                offset = (char*)info.dli_saddr - (char*)addr;
+                char sign;
+                ptrdiff_t offset;
+                if (addr >= info.dli_saddr) {
+                    sign = '+';
+                    offset = (char*)addr - (char*)info.dli_saddr;
+                } else {
+                    sign = '-';
+                    offset = (char*)info.dli_saddr - (char*)addr;
+                }
+                snprintf(msg,
+                         len,
+                         "%s(%s%c%#tx) [%p+0x%" PRIx64 "]",
+                         info.dli_fname,
+                         info.dli_sname ? info.dli_sname : "",
+                         sign,
+                         offset,
+                         info.dli_fbase,
+                         (uint64_t)image_offset);
             }
-            snprintf(msg, len, "%s(%s%c%#tx) [%p]",
-                    info.dli_fname,
-                    info.dli_sname ? info.dli_sname : "",
-                    sign, offset, addr);
+        } else {
+            // No function found; just print library name and offset.
+            snprintf(msg,
+                     len,
+                     "%s [%p+0x%" PRIx64 "]",
+                     info.dli_fname,
+                     info.dli_fbase,
+                     (uint64_t)image_offset);
         }
     } else {
-        // No symbol found.
+        // dladdr failed.
         snprintf(msg, len, "[%p]", addr);
     }
 #endif // WIN32
@@ -114,7 +128,7 @@ void print_backtrace(write_cb_t write_cb, void* context) {
     // Note we start from 1 to skip our own frame.
     for (int ii = 1; ii < active_frames; ii++) {
         // Fixed-sized buffer; possible that description will be cropped.
-        char msg[200];
+        char msg[300];
         describe_address(msg, sizeof(msg), frames[ii]);
         write_cb(context, msg);
     }
@@ -131,3 +145,50 @@ void print_backtrace(write_cb_t write_cb, void* context) {
 }
 
 #endif // defined(HAVE_BACKTRACE_SUPPORT)
+
+static void print_to_file_cb(void* ctx, const char* frame) {
+    fprintf(ctx, "\t%s\n", frame);
+}
+
+PLATFORM_PUBLIC_API
+void print_backtrace_to_file(FILE* stream) {
+    print_backtrace(print_to_file_cb, stream);
+}
+
+struct context {
+    const char *indent;
+    char *buffer;
+    size_t size;
+    size_t offset;
+    bool error;
+};
+
+static void memory_cb(void* ctx, const char* frame) {
+    struct context *c = ctx;
+
+
+    if (!c->error) {
+
+        int length = snprintf(c->buffer + c->offset, c->size - c->offset,
+                              "%s%s\n", c->indent, frame);
+
+        if ((length < 0) ||
+            (length >= (c->size - c->offset))) {
+            c->error = true;
+        } else {
+            c->offset += length;
+        }
+    }
+}
+
+PLATFORM_PUBLIC_API
+bool print_backtrace_to_buffer(const char *indent, char *buffer, size_t size) {
+    struct context c = {
+        .indent = indent,
+        .buffer = buffer,
+        .size = size,
+        .offset = 0,
+        .error = false};
+    print_backtrace(memory_cb, &c);
+    return !c.error;
+}

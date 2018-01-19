@@ -1,6 +1,12 @@
 /* -*- Mode: C; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
-#ifndef CONFIG_H
-#define CONFIG_H 1
+
+#pragma once
+
+#cmakedefine HAVE_BACKTRACE 1
+#cmakedefine HAVE_DLADDR 1
+#cmakedefine HAVE_PTHREAD_SETNAME_NP 1
+#cmakedefine HAVE_PTHREAD_GETNAME_NP 1
+#cmakedefine HAVE_SCHED_GETAFFINITY 1
 
 #ifdef WIN32
 #include <winsock2.h>
@@ -35,12 +41,10 @@ typedef long long int64_t;
 #include <signal.h>
 #include <inttypes.h>
 
-#endif
+#endif // WIN32
 
 /* Common section */
 #include <stdlib.h>
 #include <sys/types.h>
 
 #include <platform/platform.h>
-
-#endif

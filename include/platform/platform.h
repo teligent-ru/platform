@@ -16,12 +16,29 @@
  */
 #pragma once
 
-#include <platform/cbassert.h>
+#include <stdbool.h>
+
 #include <platform/dynamic.h>
+#include <platform/visibility.h>
+
+/* PLATFORM_PUBLIC_API
+ *
+ * Used for functions which are part of the public API of platform.
+ * "Inside" platform (i.e. when compiling platform.so) they will export the
+ * symbol
+ * "Outside" platform (i.e. when compiling code which wants to link to
+ * platform.so) they will allow the symbol to be imported from platform.so
+ */
+#if defined(platform_so_EXPORTS)
+#define PLATFORM_PUBLIC_API EXPORT_SYMBOL
+#else
+#define PLATFORM_PUBLIC_API IMPORT_SYMBOL
+#endif
+
+#include <platform/cbassert.h>
 
 #ifdef WIN32
 /* Include winsock2.h before windows.h to avoid winsock.h to be included */
-#define NOMINMAX
 #include <winsock2.h>
 #include <windows.h>
 #else
@@ -32,7 +49,10 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdint.h>
-#include <platform/visibility.h>
+
+#ifdef __sun
+#include <arpa/inet.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -133,11 +153,33 @@ extern "C" {
     /**
      * Sets the current threads' name.
      *
-     * @param name New value for the current threads' name. If non-NULL,
-     *             maximum of 16 characters in length.
+     * This method tries to set the current threads name by using
+     * pthread_setname_np (which means that it is not implemented
+     * on windows)
+     *
+     * @param name New value for the current threads' name
+     * @return 0 for success, 1 if the specified name is too long and
+     *         -1 if an error occurred
      */
     PLATFORM_PUBLIC_API
-    void cb_set_thread_name(const char* name);
+    int cb_set_thread_name(const char* name);
+
+    /**
+     * Try to get the name of the current thread
+     *
+     * @param name destination buffer
+     * @param size size of destination buffer
+     * @return 0 for success
+     *         -1 if an error occurred
+     */
+    PLATFORM_PUBLIC_API
+    int cb_get_thread_name(char* name, size_t size);
+
+    /**
+     * Does the underlying platform support setting thread names
+     */
+    PLATFORM_PUBLIC_API
+    bool is_thread_name_supported(void);
 
     /***********************************************************************
      *                      Mutex related functions                        *
@@ -383,12 +425,50 @@ extern "C" {
     PLATFORM_PUBLIC_API
     int cb_get_timeofday(struct timeval *tv);
 
-    /*
-        set an offset so that cb_get_timeofday returns an offsetted time.
-        This is intended for testing of time jumps.
-    */
+    /**
+     * Set an offset (in seconds) added to cb_get_timeofday before returned
+     * to the caller.
+     *
+     * This is intended for testing of time jumps.
+     *
+     * @param offset the number of seconds to add (a negative value results in
+     *               jumping back in time)
+     */
     PLATFORM_PUBLIC_API
-    void cb_set_timeofday_offset(uint64_t offset);
+    void cb_set_timeofday_offset(int offset);
+
+    /**
+     * Get the offset being added to the cb_get_timeofday()
+     */
+    PLATFORM_PUBLIC_API
+    int cb_get_timeofday_offset(void);
+
+    /**
+     * Set an uptime offset to be added to memcached_uptime
+     *
+     * This is intended for the testing of expiry.
+     *
+     * @param offset the number of seconds to add
+     *
+     */
+    PLATFORM_PUBLIC_API
+    void cb_set_uptime_offset(uint64_t offset);
+
+    /**
+     * Get the offset to add to the uptime.
+     */
+    PLATFORM_PUBLIC_API
+    uint64_t cb_get_uptime_offset();
+
+    /**
+     * Travel in time by updating the timeofday_offset with a relative
+     * value
+     *
+     * @param secs the number of seconds to travel
+     */
+    PLATFORM_PUBLIC_API
+    void cb_timeofday_timetravel(int offset);
+
 
     /**
      * Some of our platforms complain on not using mkstemp. Instead of
@@ -425,6 +505,40 @@ extern "C" {
     PLATFORM_PUBLIC_API
     int cb_localtime_r(const time_t *clock, struct tm *result);
 
+    /**
+     * Definition of a process identifier
+     */
+    typedef int cb_pid_t;
+
+    /**
+     * Get the process identifier for the running process
+     */
+    PLATFORM_PUBLIC_API
+    cb_pid_t cb_getpid(void);
+
+
 #ifdef __cplusplus
 }
+
+namespace cb {
+/**
+ * Search for a string within a string (which may not be '\0' terminated)
+ *
+ * @param haystack The buffer to search in
+ * @param needle The string to search for
+ * @param len The number of bytes in haystack
+ * @return pointer to the first occurrence of needle in haystack, or
+ *                 nullptr if not found.
+ */
+PLATFORM_PUBLIC_API
+char* strnstr(char* haystack, const char* needle, size_t len) CB_ATTR_NONNULL(1, 2);
+
+inline const char* strnstr(const char* haystack,
+                           const char* needle,
+                           size_t len) {
+    return const_cast<const char*>(strnstr(const_cast<char*>(haystack),
+                                           needle, len));
+}
+}
+
 #endif

@@ -1,6 +1,6 @@
 /* -*- Mode: C++; tab-width: 4; c-basic-offset: 4; indent-tabs-mode: nil -*- */
 /*
- *     Copyright 2012 Couchbase, Inc
+ *     Copyright 2016 Couchbase, Inc
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -14,72 +14,128 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
+#pragma once
 
-#ifndef PLATFORM_DIRUTILS_H_
-#define PLATFORM_DIRUTILS_H_ 1
-
-#include <platform/visibility.h>
-
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-namespace CouchbaseDirectoryUtilities
-{
-    /**
-     * Return the directory part of an absolute path
-     */
-    PLATFORM_PUBLIC_API
-    std::string dirname(const std::string &dir);
+#include <platform/dirutils-visibility.h>
 
-    /**
-     * Return the filename part of an absolute path
-     */
-    PLATFORM_PUBLIC_API
-    std::string basename(const std::string &name);
+namespace cb {
+namespace io {
+/**
+ * Return the directory part of an absolute path
+ */
+DIRUTILS_PUBLIC_API
+std::string dirname(const std::string& dir);
 
-    /**
-     * Return a vector containing all of the files starting with a given
-     * name stored in a given directory
-     */
-    PLATFORM_PUBLIC_API
-    std::vector<std::string> findFilesWithPrefix(const std::string &dir, const std::string &name);
+/**
+ * Return the filename part of an absolute path
+ */
+DIRUTILS_PUBLIC_API
+std::string basename(const std::string& name);
 
-    /**
-     * Return a vector containing all of the files starting with a given
-     * name specified with this absolute path
-     */
-    PLATFORM_PUBLIC_API
-    std::vector<std::string> findFilesWithPrefix(const std::string &name);
+/**
+ * Return a vector containing all of the files starting with a given
+ * name stored in a given directory
+ */
+DIRUTILS_PUBLIC_API
+std::vector<std::string> findFilesWithPrefix(const std::string& dir,
+                                             const std::string& name);
 
-    /**
-     * Return a vector containing all of the files containing a given substring
-     * located in a given directory
-     */
-    PLATFORM_PUBLIC_API
-    std::vector<std::string> findFilesContaining(const std::string &dir, const std::string &name);
+/**
+ * Return a vector containing all of the files starting with a given
+ * name specified with this absolute path
+ */
+DIRUTILS_PUBLIC_API
+std::vector<std::string> findFilesWithPrefix(const std::string& name);
 
-    /**
-     * Delete a file or directory (including subdirectories)
-     */
-    PLATFORM_PUBLIC_API
-    bool rmrf(const std::string &path);
+/**
+ * Return a vector containing all of the files containing a given
+ * substring located in a given directory
+ */
+DIRUTILS_PUBLIC_API
+std::vector<std::string> findFilesContaining(const std::string& dir,
+                                             const std::string& name);
 
+/**
+ * Delete a file or directory (including subdirectories)
+ * @param path path of the file or directory that is being removed
+ * @throws system_error in case of any errors during deletion
+ */
+DIRUTILS_PUBLIC_API
+void rmrf(const std::string& path);
 
-    /**
-     * Check if a directory exists or not
-     */
-    PLATFORM_PUBLIC_API
-    bool isDirectory(const std::string &directory);
+/**
+ * Check if a directory exists or not
+ */
+DIRUTILS_PUBLIC_API
+bool isDirectory(const std::string& directory);
 
-    /**
-     * Try to create directory including all of the parent directories
-     *
-     * @param directory the directory to create
-     * @return true if success, false otherwise
-     */
-    PLATFORM_PUBLIC_API
-    bool mkdirp(const std::string &directory);
+/**
+ * Check if a path exists and is a file
+ */
+DIRUTILS_PUBLIC_API
+bool isFile(const std::string& file);
 
+/**
+ * Try to create directory including all of the parent directories
+ *
+ * @param directory the directory to create
+ * @throws std::runtime_error if an error occurs
+ */
+DIRUTILS_PUBLIC_API
+void mkdirp(const std::string& directory);
+
+/**
+ * Create a unique temporary filename with the given prefix.
+ *
+ * This method is implemented by using cb_mktemp, but the caller
+ * does not need to add the XXXXXX in the filename.
+ *
+ * @param prefix The prefix to use in the filename.
+ * @return The unique filename
+ */
+DIRUTILS_PUBLIC_API
+std::string mktemp(const std::string& prefix);
+
+/**
+ * Get the name of the current working directory
+ *
+ * @return the name of the current working directory
+ * @throws std::system_error if we fail to determine the current working
+ *         directory
+ */
+DIRUTILS_PUBLIC_API
+std::string getcwd(void);
+
+/**
+ * Try to set the maximum number of file descriptors to the requested
+ * limit, and return the number we could get.
+ *
+ * On a Unix system this limit affects files and sockets
+ *
+ * @param limit the requested maximum number of file descriptors
+ * @return the maximum number of file descriptors
+ * @throws std::system_error if we fail to determine the maximum number
+ *         of file descriptor
+ */
+DIRUTILS_PUBLIC_API
+uint64_t maximizeFileDescriptors(uint64_t limit);
+
+/**
+ * Windows use '\' as the directory separator character (but internally it
+ * allows '/', but I've seen problems where I try to mix '\' and '/' in the
+ * same path. This method replace all occurrences of '/' with '\' on windows.
+ *
+ * @param path the path to sanitize
+ */
+inline void sanitizePath(std::string& path) {
+#ifdef WIN32
+    std::replace(path.begin(), path.end(), '/', '\\');
+#endif
 }
-
-#endif  // PLATFORM_DIRUTILS_H_
+}
+}

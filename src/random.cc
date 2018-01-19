@@ -16,12 +16,13 @@
  */
 #include "config.h"
 
-#include <errno.h>
-#include <cstring>
 #include <platform/platform.h>
+#include <platform/strerror.h>
 #include <platform/random.h>
+
 #include <sstream>
 #include <stdexcept>
+#include <mutex>
 
 namespace Couchbase {
    class RandomGeneratorProvider {
@@ -30,26 +31,7 @@ namespace Couchbase {
       RandomGeneratorProvider() {
          if (cb_rand_open(&provider) == -1) {
             std::stringstream ss;
-            std::string reason;
-
-#ifdef WIN32
-            DWORD err = GetLastError();
-            char* win_msg = NULL;
-            if (FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                               FORMAT_MESSAGE_FROM_SYSTEM |
-                               FORMAT_MESSAGE_IGNORE_INSERTS,
-                               NULL, err,
-                               MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                               (LPTSTR)&win_msg,
-                               0, NULL) > 0) {
-                reason.assign(win_msg);
-                LocalFree(win_msg);
-            } else {
-                reason.assign("Failed to determine error cause");
-            }
-#else
-            reason.assign(strerror(errno));
-#endif
+            std::string reason = cb_strerror();
             ss << "Failed to initialize random generator: " << reason;
             throw std::runtime_error(ss.str());
          }
@@ -69,64 +51,21 @@ namespace Couchbase {
 
    class SharedRandomGeneratorProvider : public RandomGeneratorProvider {
    public:
-      SharedRandomGeneratorProvider() {
-         cb_mutex_initialize(&mutex);
-      }
-
-      ~SharedRandomGeneratorProvider() {
-         cb_mutex_destroy(&mutex);
-      }
-
       virtual bool getBytes(void *dest, size_t size) {
-         bool ret;
-         cb_mutex_enter(&mutex);
-         ret = RandomGeneratorProvider::getBytes(dest, size);
-         cb_mutex_exit(&mutex);
-         return ret;
+         std::lock_guard<std::mutex> lock(mutex);
+         return RandomGeneratorProvider::getBytes(dest, size);
       }
 
    private:
-      cb_mutex_t mutex;
-   };
-
-   /*
-    * I don't want all processes that link with platform to open a
-    * random generator, so let's use the runtime linker to create
-    * a class that initialize the mutex so that I can have a safe
-    * way of just creating one (and only one) instance of the
-    * the shared generator
-    */
-   class SharedRandomGeneratorSingleton {
-   public:
-      SharedRandomGeneratorSingleton() : instance(NULL) {
-         cb_mutex_initialize(&mutex);
-      }
-
-      ~SharedRandomGeneratorSingleton() {
-         cb_mutex_destroy(&mutex);
-      }
-
-      SharedRandomGeneratorProvider *get() {
-         cb_mutex_enter(&mutex);
-         if (instance == NULL) {
-            instance = new SharedRandomGeneratorProvider();
-         }
-         cb_mutex_exit(&mutex);
-         return instance;
-      }
-
-   private:
-      cb_mutex_t mutex;
-      SharedRandomGeneratorProvider *instance;
+      std::mutex mutex;
    };
 }
-
-static Couchbase::SharedRandomGeneratorSingleton shrgen;
 
 PLATFORM_PUBLIC_API
 Couchbase::RandomGenerator::RandomGenerator(bool s) : shared(s) {
    if (shared) {
-      provider = shrgen.get();
+      static SharedRandomGeneratorProvider singleton_provider;
+      provider = &singleton_provider;
    } else {
       provider = new RandomGeneratorProvider();
    }

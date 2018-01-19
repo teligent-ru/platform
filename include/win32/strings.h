@@ -14,17 +14,12 @@
 *   See the License for the specific language governing permissions and
 *   limitations under the License.
 */
-#pragma once
+#ifndef STRINGS_H
+#define STRINGS_H
 
 #include <stdarg.h>
 
-#include <platform/visibility.h>
-
-PLATFORM_PUBLIC_API
-int asprintf(char **ret, const char *format, ...);
-
-PLATFORM_PUBLIC_API
-int vasprintf(char **ret, const char *format, va_list ap);
+#include <platform/platform.h>
 
 /*
 * We have a fair amount of use of this file in our code base.
@@ -36,4 +31,6 @@ int vasprintf(char **ret, const char *format, va_list ap);
 
 #ifndef snprintf
 #define snprintf _snprintf
+#endif
+
 #endif
